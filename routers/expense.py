@@ -67,8 +67,10 @@ def get_expense_api(session: SessionDep, expense_id: int) -> ExpenseRead:
 def update_expense_api(
     session: SessionDep, expense: ExpenseUpdate, expense_id: int
 ) -> ExpenseRead:
-    return update_expense(session=session, expense=expense, expense_id=expense_id)
-
+    expense = update_expense(session=session, expense=expense, expense_id=expense_id)
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    return expense
 
 @expense_router.delete(
     "/expenses/{expense_id}/",

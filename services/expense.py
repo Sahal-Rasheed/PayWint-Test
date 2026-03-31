@@ -1,5 +1,7 @@
+from datetime import UTC, datetime
+
 from fastapi import HTTPException
-from sqlmodel import Session, func, select, update
+from sqlmodel import Session, func, select, update, delete
 
 from models.expense import Expense
 from schemas.expense import ExpenseCreate, ExpenseUpdate
@@ -17,7 +19,7 @@ def create_expense(session: Session, expense: ExpenseCreate) -> Expense:
         raise
 
 
-def get_expense(session: Session, expense_id: int) -> Expense:
+def get_expense(session: Session, expense_id: int) -> Expense | None:
     expense = session.exec(
         select(Expense).where(Expense.id == expense_id)
     ).one_or_none()
@@ -31,22 +33,20 @@ def list_expenses(session: Session, offset: int = 0, limit: int = 10) -> list[Ex
 
 def update_expense(
     session: Session, expense: ExpenseUpdate, expense_id: int
-) -> Expense:
+) -> Expense | None:
     try:
         is_valid = get_expense(session, expense_id)
         if not is_valid:
             return None
 
         expense_obj = expense.model_dump(exclude_unset=True)
+        expense_obj["updated_at"] = datetime.now(UTC)
 
-        expense = session.exec(
-            update(Expense)
-            .where(Expense.id == expense_id)
-            .values(**expense_obj)
-            .returning(Expense)
+        session.exec(
+            update(Expense).where(Expense.id == expense_id).values(**expense_obj)
         )
         session.commit()
-        return expense.scalar_one_or_none()
+        return get_expense(session=session, expense_id=expense_id)
     except Exception:
         session.rollback()
         raise
@@ -57,9 +57,9 @@ def delete_expense(session: Session, expense_id: int) -> int:
     if not expense_obj:
         raise HTTPException(status_code=404, detail="Expense not found")
 
-    session.delete(expense_obj)
+    result = session.exec(delete(Expense).where(Expense.id == expense_id))
     session.commit()
-    return 1
+    return result.rowcount > 0
 
 
 def filter_expenses(session: Session, year: int, month: int) -> list[Expense]:
